@@ -1,14 +1,13 @@
 --[[
     排干湖水脚本(作者b站:英吉利超入_)
-    功能：远距离无限拿水 / 全图互动（无视距离 + 秒互动）
-          自动售卖(1号机) / 自动开箱子 / 自动售卖(2号机)
-    作者：英吉利超入
+    功能:自己去体验我懒得写了
 --]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
+local StarterGui = game:GetService("StarterGui")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -18,15 +17,15 @@ local remoteBucketUsed = ReplicatedStorage:WaitForChild("VerdantRemotes"):WaitFo
 local remoteBucketPoured = ReplicatedStorage:WaitForChild("VerdantRemotes"):WaitForChild("VDT_Bucket.Poured")
 local remoteChestOpen = ReplicatedStorage:WaitForChild("VerdantRemotes"):WaitForChild("VDT_Chest.Open")
 
--- 参数对象（已修正1号机路径）
+-- 参数对象
 local sell1Prompt = Workspace:WaitForChild("Scripted"):WaitForChild("CheckpointParts"):WaitForChild("1"):WaitForChild("Drain"):WaitForChild("Scripted"):WaitForChild("ProximityPosition"):WaitForChild("ProximityPrompt")
 local chestPart = Workspace:WaitForChild("Scripted"):WaitForChild("Chests"):WaitForChild("Chest"):WaitForChild("Part")
 local sell2Prompt = Workspace:WaitForChild("Scripted"):WaitForChild("CheckpointParts"):WaitForChild("1"):WaitForChild("Drain"):WaitForChild("Scripted"):WaitForChild("ProximityPosition"):WaitForChild("ProximityPrompt")
 
--- 当前语言，默认为 Chinese
+-- 当前语言
 local currentLanguage = "Chinese"
 
--- ==================== 多语言文本表 ====================
+-- 多语言文本表
 local LANG = {
     Chinese = {
         title = "排干湖水脚本(作者b站:英吉利超入_)",
@@ -41,7 +40,13 @@ local LANG = {
         sell2 = "自动售卖(2号机)",
         sell2Stop = "停止售卖(2号机)",
         notice = "自动售卖与开箱子需要开启全图互动与秒互动",
-        floatText = "b站:英吉利超入_"
+        floatText = "b站:英吉利超入_",
+        langSelected = "你已选择中文语言",
+        waterOn = "无限拿水已开启",
+        interactOn = "全图互动已开启",
+        sell1On = "售卖1号机已开启",
+        chestOn = "自动开箱已开启",
+        sell2On = "售卖2号机已开启",
     },
     English = {
         title = "Drain Lake Script (Author: bilibili Yingjili Chaoru_)",
@@ -56,9 +61,27 @@ local LANG = {
         sell2 = "Auto Sell (Machine 2)",
         sell2Stop = "Stop Sell (Machine 2)",
         notice = "Auto Sell & Chest require Full Map Interaction enabled",
-        floatText = "bilibili: Yingjili Chaoru_"
+        floatText = "bilibili: Yingjili Chaoru_",
+        langSelected = "You have selected English",
+        waterOn = "Infinite Water activated",
+        interactOn = "Full Map Interaction activated",
+        sell1On = "Sell Machine 1 activated",
+        chestOn = "Auto Open Chest activated",
+        sell2On = "Sell Machine 2 activated",
     }
 }
+
+-- ==================== 通知 ====================
+local function showNotification(title, content, duration)
+    duration = duration or 2
+    print("[排干湖水脚本] " .. title .. (content ~= "" and " - " .. content or ""))
+
+    StarterGui:SetCore("SendNotification", {
+        Title = title,
+        Text = content,
+        Duration = duration,
+    })
+end
 
 -- ==================== 语言选择界面 ====================
 local function createLanguageSelection()
@@ -114,7 +137,6 @@ local function createLanguageSelection()
     englishBtn.Parent = frame
     Instance.new("UICorner", englishBtn).CornerRadius = UDim.new(0, 8)
 
-    -- 悬停效果
     local function addHover(btn)
         local orig = btn.BackgroundColor3
         btn.MouseEnter:Connect(function() btn.BackgroundColor3 = orig:Lerp(Color3.new(1,1,1), 0.2) end)
@@ -135,7 +157,7 @@ local function createLanguageSelection()
     end)
 end
 
--- ==================== 主功能 UI（多语言） ====================
+-- ==================== 主UI ====================
 function createMainGui()
     local lang = LANG[currentLanguage]
 
@@ -271,7 +293,6 @@ function createMainGui()
     noticeLabel.Text = lang.notice
     noticeLabel.Parent = contentFrame
 
-    -- 悬停效果（修复激活颜色恢复）
     local function addToggleHover(btn, getIsActiveFunc, activeColor)
         local orig = btn.BackgroundColor3
         btn.MouseEnter:Connect(function()
@@ -288,7 +309,7 @@ function createMainGui()
         end)
     end
 
-    -- 悬浮窗（可拖动，短按恢复）
+    -- 悬浮窗
     local floatFrame = Instance.new("Frame")
     floatFrame.Size = UDim2.new(0, 260, 0, 40)
     floatFrame.Position = UDim2.new(0.5, -130, 0, 10)
@@ -321,7 +342,6 @@ function createMainGui()
     floatLabel.TextXAlignment = Enum.TextXAlignment.Center
     floatLabel.Parent = floatFrame
 
-    -- 记录按下位置，区分拖拽与点击
     local touchStartPos = nil
     floatFrame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -359,8 +379,11 @@ function createMainGui()
         end
     end)
 
-    -- ==================== 通用循环控制函数 ====================
-    local function createLoopToggle(btn, startText, stopText, remote, args, getIsActive, setActive)
+    -- 语言通知
+    showNotification("Language", lang.langSelected, 2)
+
+    -- 通用循环函数
+    local function createLoopToggle(btn, startText, stopText, remote, args, getIsActive, setActive, notifyText)
         local thread = nil
         local origColor = Color3.fromRGB(60, 160, 60)
         local activeColor = Color3.fromRGB(200, 50, 50)
@@ -386,23 +409,25 @@ function createMainGui()
                 btn.Text = stopText
                 btn.BackgroundColor3 = activeColor
                 thread = task.spawn(loop)
+                showNotification(notifyText, "", 2)
             end
         end)
 
         addToggleHover(btn, getIsActive, activeColor)
     end
 
-    -- ==================== 功能1：无限拿水 ====================
+    -- 功能1：无限拿水
     local isWaterActive = false
     createLoopToggle(
         waterBtn,
         lang.waterStart, lang.waterStop,
         remoteBucketUsed, { },
         function() return isWaterActive end,
-        function(v) isWaterActive = v end
+        function(v) isWaterActive = v end,
+        lang.waterOn
     )
 
-    -- ==================== 功能2：全图互动 + 秒互动 ====================
+    -- 功能2：全图互动 + 秒互动
     local isInteractActive = false
     local originalData = {}
     local descendantAddedConn = nil
@@ -447,6 +472,7 @@ function createMainGui()
             interactBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
             processAllPrompts(true)
             descendantAddedConn = Workspace.DescendantAdded:Connect(onDescendantAdded)
+            showNotification(lang.interactOn, "", 2)
         else
             interactBtn.Text = lang.interactStart
             interactBtn.BackgroundColor3 = Color3.fromRGB(60, 160, 60)
@@ -465,37 +491,40 @@ function createMainGui()
     end)
     addToggleHover(interactBtn, function() return isInteractActive end, Color3.fromRGB(200, 50, 50))
 
-    -- ==================== 功能3：自动售卖 (1号机) ====================
+    -- 功能3：自动售卖 (1号机)
     local isSell1Active = false
     createLoopToggle(
         sell1Btn,
         lang.sell1, lang.sell1Stop,
         remoteBucketPoured, { sell1Prompt },
         function() return isSell1Active end,
-        function(v) isSell1Active = v end
+        function(v) isSell1Active = v end,
+        lang.sell1On
     )
 
-    -- ==================== 功能4：自动开箱子 ====================
+    -- 功能4：自动开箱子
     local isChestActive = false
     createLoopToggle(
         chestBtn,
         lang.chest, lang.chestStop,
         remoteChestOpen, { chestPart },
         function() return isChestActive end,
-        function(v) isChestActive = v end
+        function(v) isChestActive = v end,
+        lang.chestOn
     )
 
-    -- ==================== 功能5：自动售卖 (2号机) ====================
+    -- 功能5：自动售卖 (2号机)
     local isSell2Active = false
     createLoopToggle(
         sell2Btn,
         lang.sell2, lang.sell2Stop,
         remoteBucketPoured, { sell2Prompt },
         function() return isSell2Active end,
-        function(v) isSell2Active = v end
+        function(v) isSell2Active = v end,
+        lang.sell2On
     )
 
-    -- ==================== 流动彩虹边框 ====================
+    -- 彩虹边框
     RunService.Heartbeat:Connect(function()
         local hue = (tick() * 0.5) % 1
         local color = Color3.fromHSV(hue, 1, 1)
@@ -504,5 +533,5 @@ function createMainGui()
     end)
 end
 
--- 启动：先显示语言选择
+-- 启动
 createLanguageSelection()
